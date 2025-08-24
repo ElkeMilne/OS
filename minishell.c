@@ -1,8 +1,8 @@
 /*********************************************************************
-   Program  : miniShell                   Version    : 1.4
+   Program  : miniShell                   Version    : 1.5
  --------------------------------------------------------------------
    Modified skeleton code for Linux/Unix command line interpreter
-   Adds backgroundFlag jobs, cd command, and proper error handling
+   Fixes cd command, backgroundFlag jobs, and proper job reporting
  --------------------------------------------------------------------
    File       : minishell.c
    Compiler/System : gcc/linux
@@ -33,6 +33,8 @@ typedef struct {
 Job jobs[MAX_JOBS];             /* active backgroundFlag jobs */
 int job_count = 0;              /* number of active jobs */
 int job_id_counter = 1;         /* auto-increment job ID */
+Job finished_jobs[MAX_JOBS];    /* finished backgroundFlag jobs */
+int finished_job_count = 0;     /* count of finished jobs */
 
 /*
     shell prompt
@@ -46,7 +48,7 @@ void prompt(void)
 
 /*
     signal handler for SIGCHLD
-    reports when backgroundFlag process finishes immediately
+    store finished backgroundFlag processes for later printing
 */
 void sighandler(int sig)
 {
@@ -56,14 +58,8 @@ void sighandler(int sig)
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         for (int i = 0; i < job_count; i++) {
             if (jobs[i].pid == pid) {
-
-                /* print job finished immediately */
-                if (WIFEXITED(status)) {
-                    printf("\n[%d]+ Done %s (exit=%d)\n", jobs[i].job_id, jobs[i].command, WEXITSTATUS(status));
-                } else if (WIFSIGNALED(status)) {
-                    printf("\n[%d]+ Terminated %s (signal=%d)\n", jobs[i].job_id, jobs[i].command, WTERMSIG(status));
-                }
-                fflush(stdout);
+                /* store job in finished jobs list */
+                finished_jobs[finished_job_count++] = jobs[i];
 
                 /* remove job from active job list */
                 for (int j = i; j < job_count - 1; j++) {
@@ -74,6 +70,16 @@ void sighandler(int sig)
             }
         }
     }
+}
+
+/* prints finished backgroundFlag jobs after prompt */
+void printCompletedJobs()
+{
+    for (int i = 0; i < finished_job_count; i++) {
+        fprintf(stdout, "[%d]+ Done %s\n", finished_jobs[i].job_id, finished_jobs[i].command);
+        fflush(stdout);
+    }
+    finished_job_count = 0;
 }
 
 /* argk - number of arguments */
@@ -103,6 +109,9 @@ int main(int argk, char *argv[], char *envp[])
             continue;
         }
 
+        /* print finished backgroundFlag jobs */
+        printCompletedJobs();
+
         /* ignore blank lines or comments */
         if (line[0] == '#' || line[0] == '\n' || line[0] == '\000') {
             continue;          /* back to prompt */
@@ -127,22 +136,24 @@ int main(int argk, char *argv[], char *envp[])
         if (i > 1 && strcmp(v[i - 1], "&") == 0) {
             backgroundFlag = 1;
             v[i - 1] = NULL;
-            line_copy[strlen(line_copy) - 2] = '\0'; /* remove '&' from command copy */
+            line_copy[strcspn(line_copy, "&")] = 0; /* remove '&' from command copy */
         }
 
         /* handle built-in cd command */
         if (strcmp(v[0], "cd") == 0) {
-        int ret;
-        if (v[1] == NULL) {
-            ret = chdir(getenv("HOME"));   /* default HOME */
-        } else {
-            ret = chdir(v[1]);
+            int ret;
+            if (v[1] == NULL) {
+                ret = chdir(getenv("HOME"));   /* default HOME */
+            } else {
+                /* remove possible trailing newline */
+                v[1][strcspn(v[1], "\n")] = 0;
+                ret = chdir(v[1]);
+            }
+            if (ret != 0) {  /* check for errors */
+                perror("cd failed");
+            }
+            continue;  /* back to prompt */
         }
-        if (ret != 0) {  /* check for errors */
-            perror("cd failed");
-        }
-        continue;  /* back to prompt */
-    }
 
         /* fork a child process to exec the command in v[0] */
         switch (frkRtnVal = fork()) {
@@ -153,7 +164,7 @@ int main(int argk, char *argv[], char *envp[])
             case 0: {           /* child process */
                 execvp(v[0], v);
                 perror("exec failed");  /* exec failed */
-                exit(1);
+                exit(1);              /* terminate child */
             }
             default: {          /* parent process */
                 if (backgroundFlag == 0) {
