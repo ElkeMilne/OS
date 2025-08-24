@@ -2,7 +2,7 @@
    Program  : miniShell                   Version    : 1.5
  --------------------------------------------------------------------
    Modified skeleton code for Linux/Unix command line interpreter
-   Fixes cd command, backgroundFlag jobs, and proper job reporting
+   Fixes cd command, background jobs, and proper job reporting
  --------------------------------------------------------------------
    File       : minishell.c
    Compiler/System : gcc/linux
@@ -19,21 +19,21 @@
 
 #define NV 20           /* max number of command tokens */
 #define NL 100          /* input buffer size */
-#define MAX_JOBS 100    /* maximum number of backgroundFlag jobs */
+#define MAX_JOBS 100    /* maximum number of background jobs */
 
 char line[NL];          /* command input buffer */
 
-/* structure to store backgroundFlag job info */
+/* structure to store background job info */
 typedef struct {
     int job_id;
     pid_t pid;
     char command[NL];
 } Job;
 
-Job jobs[MAX_JOBS];             /* active backgroundFlag jobs */
+Job jobs[MAX_JOBS];             /* active background jobs */
 int job_count = 0;              /* number of active jobs */
 int job_id_counter = 1;         /* auto-increment job ID */
-Job finished_jobs[MAX_JOBS];    /* finished backgroundFlag jobs */
+Job finished_jobs[MAX_JOBS];    /* finished background jobs */
 int finished_job_count = 0;     /* count of finished jobs */
 
 /*
@@ -48,7 +48,7 @@ void prompt(void)
 
 /*
     signal handler for SIGCHLD
-    store finished backgroundFlag processes for later printing
+    store finished background processes for later printing
 */
 void sighandler(int sig)
 {
@@ -72,7 +72,7 @@ void sighandler(int sig)
     }
 }
 
-/* prints finished backgroundFlag jobs after prompt */
+/* prints finished background jobs after prompt */
 void printCompletedJobs()
 {
     for (int i = 0; i < finished_job_count; i++) {
@@ -87,17 +87,17 @@ void printCompletedJobs()
 /* envp - environment pointer */
 int main(int argk, char *argv[], char *envp[])
 {
-    int frkRtnVal;          /* value returned by fork sys call */
-    char *v[NV];            /* array of pointers to command line tokens */
-    char *sep = " \t\n";    /* command line token separators */
-    int i;                  /* parse index */
-    int backgroundFlag;     /* backgroundFlag flag */
+    int frkRtnVal;              /* value returned by fork sys call */
+    char *v[NV];                /* array of pointers to command line tokens */
+    const char *sep = " \t\n";  /* command line token separators */
+    int i;                      /* parse index */
+    int backgroundFlag;          /* background flag */
 
-    /* install SIGCHLD handler to track finished backgroundFlag jobs */
+    /* install SIGCHLD handler to track finished background jobs */
     signal(SIGCHLD, sighandler);
 
     /* prompt for and process one command line at a time */
-    while (1) {              /* do forever */
+    while (1) {                  /* do forever */
         prompt();
 
         if (fgets(line, NL, stdin) == NULL) {
@@ -109,7 +109,7 @@ int main(int argk, char *argv[], char *envp[])
             continue;
         }
 
-        /* print finished backgroundFlag jobs */
+        /* print finished background jobs */
         printCompletedJobs();
 
         /* ignore blank lines or comments */
@@ -131,7 +131,7 @@ int main(int argk, char *argv[], char *envp[])
         v[i] = NULL;          /* ensure NULL-terminated */
         if (v[0] == NULL) continue;
 
-        /* check for backgroundFlag '&' */
+        /* check for background '&' */
         backgroundFlag = 0;
         if (i > 1 && strcmp(v[i - 1], "&") == 0) {
             backgroundFlag = 1;
@@ -145,8 +145,7 @@ int main(int argk, char *argv[], char *envp[])
             if (v[1] == NULL) {
                 ret = chdir(getenv("HOME"));   /* default HOME */
             } else {
-                /* remove possible trailing newline */
-                v[1][strcspn(v[1], "\n")] = 0;
+                v[1][strcspn(v[1], "\n")] = 0; /* remove possible trailing newline */
                 ret = chdir(v[1]);
             }
             if (ret != 0) {  /* check for errors */
@@ -170,7 +169,7 @@ int main(int argk, char *argv[], char *envp[])
                 if (backgroundFlag == 0) {
                     waitpid(frkRtnVal, NULL, 0);   /* foreground job waits */
                 } else {
-                    /* store backgroundFlag job */
+                    /* store background job */
                     if (job_count < MAX_JOBS) {
                         jobs[job_count].job_id = job_id_counter++;
                         jobs[job_count].pid = frkRtnVal;
@@ -179,7 +178,7 @@ int main(int argk, char *argv[], char *envp[])
                         fprintf(stdout, "[%d] %d\n", jobs[job_count - 1].job_id, frkRtnVal);
                         fflush(stdout);
                     } else {
-                        fprintf(stdout, "Too many backgroundFlag jobs\n");
+                        fprintf(stdout, "Too many background jobs\n");
                         fflush(stdout);
                     }
                 }
