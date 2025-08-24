@@ -2,7 +2,7 @@
    Program  : miniShell                   Version    : 1.7
  --------------------------------------------------------------------
    Fully functional Linux/Unix command line interpreter
-   Fixes cd command, background jobs, delayed job reporting,
+   Fixes cd command, backgroundFlag jobs, delayed job reporting,
    proper error handling, and child termination on exec failure.
  --------------------------------------------------------------------
    File       : minishell.c
@@ -19,7 +19,7 @@
 
 #define NV 20           /* max number of command tokens */
 #define NL 100          /* input buffer size */
-#define MAX_JOBS 100    /* maximum number of background jobs */
+#define MAX_JOBS 100    /* maximum number of backgroundFlag jobs */
 
 char line[NL];          /* command input buffer */
 
@@ -37,7 +37,7 @@ int finished_job_count = 0;
 
 /*
     signal handler for SIGCHLD
-    This will report when a background process finishes
+    This will report when a backgroundFlag process finishes
 */
 void sighandler(int sig)
 {
@@ -61,7 +61,7 @@ void sighandler(int sig)
     }
 }
 
-/* prints finished background jobs after prompt */
+/* prints finished backgroundFlag jobs after prompt */
 void printCompletedJobs()
 {
     for (int i = 0; i < finished_job_count; i++) {
@@ -77,7 +77,7 @@ int main(int argk, char *argv[], char *envp[])
     char *v[NV];        /* array of pointers to command line tokens */
     char *sep = " \t\n";/* command line token separators    */
     int i;              /* parse index */
-    int background;     /* background process flag */
+    int backgroundFlag;     /* backgroundFlag process flag */
 
     signal(SIGCHLD, sighandler);
     
@@ -106,13 +106,13 @@ int main(int argk, char *argv[], char *envp[])
         }
         v[i] = NULL;
 
-        background = 0;
+        backgroundFlag = 0;
         if (i > 1 && strcmp(v[i - 1], "&") == 0) {
-            background = 1;
+            backgroundFlag = 1;
             v[i - 1] = NULL;
             line_copy[strcspn(line_copy, "&")] = 0; // remove trailing '&'
         }
-
+        
         if (strcmp(v[0], "cd") == 0) {
             if (v[1] == NULL) {
                 if (chdir(getenv("HOME")) != 0) perror("cd failed");
@@ -122,34 +122,38 @@ int main(int argk, char *argv[], char *envp[])
             continue;
         }
 
+        /* fork a child process to execute command */
         switch (frkRtnVal = fork()) {
-        case -1: {
-            perror("fork failed");
-            break;
-        }
-        case 0: {
-            execvp(v[0], v);
-            perror("exec failed");
-            exit(1);
-        }
-        default: {
-            if (background == 0) {
-                if (waitpid(frkRtnVal, NULL, 0) == -1) perror("waitpid failed");
-            } else {
-                if (job_count < MAX_JOBS) {
-                    jobs[job_count].job_id = job_id_counter++;
-                    jobs[job_count].pid = frkRtnVal;
-                    strcpy(jobs[job_count].command, line_copy);
-                    job_count++;
-                    fprintf(stdout, "[%d] %d\n", jobs[job_count - 1].job_id, frkRtnVal);
-                    fflush(stdout);
-                } else {
-                    fprintf(stdout, "Too many background jobs\n");
-                    fflush(stdout);
-                }
+            case -1: {
+                perror("fork failed");
+                break;
             }
-            break;
+            case 0: {
+                execvp(v[0], v);
+                perror("exec failed");
+                exit(1);
+            }
+            /* parent process */
+            default: {
+                if (backgroundFlag == 0) {
+                    if (waitpid(frkRtnVal, NULL, 0) == -1) perror("waitpid failed");
+                } else {
+                    /* store backgroundFlag job info */
+                    if (job_count < MAX_JOBS) {
+                        jobs[job_count].job_id = job_id_counter++;
+                        jobs[job_count].pid = frkRtnVal;
+                        strcpy(jobs[job_count].command, line_copy);
+                        job_count++;
+                        fprintf(stdout, "[%d] %d\n", jobs[job_count - 1].job_id, frkRtnVal);
+                        fflush(stdout);
+                    } else {
+                        fprintf(stdout, "Too many backgroundFlag jobs\n");
+                        fflush(stdout);
+                    }
+                }
+                break;
+            }
         }
-        }
-    }
-}
+
+    }/* while */
+}/* main */
