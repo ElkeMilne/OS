@@ -1,8 +1,9 @@
 /*********************************************************************
-   Program  : miniShell                   Version    : 1.5
+   Program  : miniShell                   Version    : 1.6
  --------------------------------------------------------------------
-   Modified skeleton code for Linux/Unix command line interpreter
-   Fixes cd command, background jobs, and proper job reporting
+   Fully functional Linux/Unix command line interpreter
+   Fixes cd command, background jobs, immediate job reporting,
+   proper error handling, and child termination on exec failure.
  --------------------------------------------------------------------
    File       : minishell.c
    Compiler/System : gcc/linux
@@ -33,22 +34,20 @@ typedef struct {
 Job jobs[MAX_JOBS];             /* active background jobs */
 int job_count = 0;              /* number of active jobs */
 int job_id_counter = 1;         /* auto-increment job ID */
-Job finished_jobs[MAX_JOBS];    /* finished background jobs */
-int finished_job_count = 0;     /* count of finished jobs */
 
 /*
     shell prompt
 */
 void prompt(void)
 {
-  // ## REMOVE THIS 'fprintf' STATEMENT BEFORE SUBMISSION
-  fprintf(stdout, "\n msh> ");
-  fflush(stdout);
+    // ## REMOVE THIS 'fprintf' STATEMENT BEFORE SUBMISSION
+    fprintf(stdout, "\n msh> ");
+    fflush(stdout);
 }
 
 /*
     signal handler for SIGCHLD
-    store finished background processes for later printing
+    reports immediately when a background process finishes
 */
 void sighandler(int sig)
 {
@@ -58,8 +57,15 @@ void sighandler(int sig)
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         for (int i = 0; i < job_count; i++) {
             if (jobs[i].pid == pid) {
-                /* store job in finished jobs list */
-                finished_jobs[finished_job_count++] = jobs[i];
+                /* print finished job immediately */
+                if (WIFEXITED(status)) {
+                    fprintf(stdout, "\n[%d]+ Done %s (exit=%d)\n",
+                            jobs[i].job_id, jobs[i].command, WEXITSTATUS(status));
+                } else if (WIFSIGNALED(status)) {
+                    fprintf(stdout, "\n[%d]+ Terminated %s (signal=%d)\n",
+                            jobs[i].job_id, jobs[i].command, WTERMSIG(status));
+                }
+                fflush(stdout);
 
                 /* remove job from active job list */
                 for (int j = i; j < job_count - 1; j++) {
@@ -70,16 +76,6 @@ void sighandler(int sig)
             }
         }
     }
-}
-
-/* prints finished background jobs after prompt */
-void printCompletedJobs()
-{
-    for (int i = 0; i < finished_job_count; i++) {
-        fprintf(stdout, "[%d]+ Done %s\n", finished_jobs[i].job_id, finished_jobs[i].command);
-        fflush(stdout);
-    }
-    finished_job_count = 0;
 }
 
 /* argk - number of arguments */
@@ -94,23 +90,22 @@ int main(int argk, char *argv[], char *envp[])
     int backgroundFlag;          /* background flag */
 
     /* install SIGCHLD handler to track finished background jobs */
-    signal(SIGCHLD, sighandler);
+    if (signal(SIGCHLD, sighandler) == SIG_ERR) {
+        perror("signal failed");
+        exit(1);
+    }
 
     /* prompt for and process one command line at a time */
     while (1) {                  /* do forever */
         prompt();
 
         if (fgets(line, NL, stdin) == NULL) {
-            // This if() required for gradescope
             if (feof(stdin)) {
                 exit(0);
             }
-            perror("fgets");
+            perror("fgets failed");
             continue;
         }
-
-        /* print finished background jobs */
-        printCompletedJobs();
 
         /* ignore blank lines or comments */
         if (line[0] == '#' || line[0] == '\n' || line[0] == '\000') {
@@ -167,7 +162,9 @@ int main(int argk, char *argv[], char *envp[])
             }
             default: {          /* parent process */
                 if (backgroundFlag == 0) {
-                    waitpid(frkRtnVal, NULL, 0);   /* foreground job waits */
+                    if (waitpid(frkRtnVal, NULL, 0) == -1) {
+                        perror("waitpid failed");
+                    }
                 } else {
                     /* store background job */
                     if (job_count < MAX_JOBS) {
