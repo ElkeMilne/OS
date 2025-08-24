@@ -9,9 +9,7 @@ void handle_input(int n){
         printf("Ouch!\n");
     }
     else if(n == SIGINT){
-        printf("Yeah!\n"){
-
-        }
+        printf("Yeah!\n");
     }
 }
 //commant line arguments passed into main
