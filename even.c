@@ -22,12 +22,11 @@ int convertN = atoi(argv[1]);
 signal(SIGHUP, handle_input);
 signal(SIGINT, handle_input);
 
-for (int i = 0; i < convertN; i++){
-    if(i % 2 == 0){
-        printf("%d\n", i);
-        fflush(stdout);
+// Print first n even numbers
+for (int i = 0; i < convertN; i++) {
+    printf("%d\n", i * 2);
+    fflush(stdout);
         sleep(5);
     }
-}
     return 0;
 }
